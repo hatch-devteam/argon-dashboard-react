@@ -36,6 +36,8 @@ const Users = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [searchField, setSearchField] = useState('email');
+  const [searchTerm, setSearchTerm] = useState('');
   const [modal, setModal] = useState(false);
   const [newUser, setNewUser] = useState({
     first_name: '',
@@ -45,7 +47,10 @@ const Users = () => {
     phone: ''
   });
 
-  const toggle = () => setModal(!modal);
+  const toggle = () => {
+    setModal(!modal);
+    setError(null);
+  };
 
   const handleInputChange = (e) => {
     setNewUser({
@@ -105,22 +110,49 @@ const Users = () => {
     fetchUsers();
   }, [currentPage]);
 
-  const fetchUsers = async () => {
+  const getAllUsers = async() => {
     try {
-      console.log('Fetching users...');
-      console.log('API URL:', `${apiConfig.baseURL}dashboard/getallusers?per_page=10&page=${currentPage}`);
       setLoading(true);
+      
       const response = await axios.get(
-        `${apiConfig.baseURL}dashboard/getallusers?per_page=10&page=${currentPage}`,
+        `${apiConfig.baseURL}dashboard/getallusers`,
         { headers: { 'Content-Type': 'application/json' } }
       );
-      console.log('API Response:', response.data);
       setUsers(response.data.users || []);
-      setTotalPages(Math.ceil((response.data.total || 1) / 10));
+      setTotalPages(response.data.pagination?.last_page || 1);
       setError(null);
     } catch (err) {
       console.error('Error fetching users:', err);
-      console.error('Error details:', err.response || err.message);
+      setError("Error fetching users. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUsers = async() => {
+    try {
+      setLoading(true);
+      const searchParams = {
+        email: '',
+        first_name: '',
+        last_name: '',
+        per_page: 10,
+        page: currentPage
+      };
+      if (searchTerm) {
+        console.log('Searching for:', searchTerm); // Add this line to check the search term
+        searchParams[searchField] = searchTerm;
+      }
+      const response = await axios.post(
+        `${apiConfig.baseURL}dashboard/searchUsers`,
+        searchParams,
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      setUsers(response.data.users || []);
+      setTotalPages(response.data.pagination?.last_page || 1);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching users:', err);
       setError("Error fetching users. Please try again later.");
     } finally {
       setLoading(false);
@@ -131,8 +163,13 @@ const Users = () => {
     setCurrentPage(page);
   };
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div className="text-center text-danger mt-3">{error}</div>;
+  if (loading) return (
+  <div className="d-flex justify-content-center align-items-center" style={{height: '100vh'}}>
+    <div className="spinner-border text-primary" role="status">
+      <span className="sr-only">Loading...</span>
+    </div>
+  </div>
+);
 
   return (
     <>
@@ -143,8 +180,24 @@ const Users = () => {
             <Card className="shadow">
               <CardHeader className="border-0 d-flex justify-content-between align-items-center">
                 <h3 className="mb-0">Users</h3>
-                <div className="d-flex">
-                  <Button color="primary" onClick={toggle} className="mr-2">
+                <div className="d-flex align-items-center">
+                  <Input type="select" className="mr-2" style={{width: '120px'}} value={searchField} onChange={(e) => setSearchField(e.target.value)}>
+                    <option value="email">Email</option>
+                    <option value="first_name">First Name</option>
+                    <option value="last_name">Last Name</option>
+                  </Input>
+                  <Input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  <Button color="primary" onClick={fetchUsers} className="ml-2">
+                    Search
+                  </Button>
+                  <Button color="secondary" onClick={() => {
+                    setSearchTerm('');
+                    setCurrentPage(1);
+                    getAllUsers();
+                  }} className="ml-2">
+                    Clear
+                  </Button>
+                  <Button color="primary" onClick={toggle} className="mr-3 ml-2" style={{width: 'auto'}}>
                     Create User
                   </Button>
                   {selectedUsers.length > 0 && (
@@ -163,6 +216,11 @@ const Users = () => {
 
               <Modal isOpen={modal} toggle={toggle}>
                 <ModalHeader toggle={toggle}>Create New User</ModalHeader>
+                {error && (
+                  <div className="alert alert-danger mx-3 mt-3" role="alert">
+                    {error}
+                  </div>
+                )}
                 <ModalBody>
                   <Form onSubmit={handleCreateUser}>
                     <FormGroup>
